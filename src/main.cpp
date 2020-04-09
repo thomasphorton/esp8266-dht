@@ -27,7 +27,7 @@ void loadConfiguration(Config &config) {
     Serial.println("Failed to open config file");
   }
   else {
-    Serial.println("config file opened");
+    Serial.println("Config file opened");
   }
 
   StaticJsonDocument<256> doc;
@@ -44,6 +44,7 @@ void loadConfiguration(Config &config) {
   config_file.close();
 }
 
+// Callback function that triggers when an MQTT message is received
 void callback(char* topic, byte* payload, int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
@@ -144,6 +145,7 @@ void setup_wifi() {
 }
 
 void reconnect() {
+
   // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
@@ -217,10 +219,12 @@ void loop() {
     char jsonBuffer[512];
     serializeJson(message, jsonBuffer);
 
+    // Generate the Device Shadow update MQTT topic
     String topic = "$aws/things/";
     topic += config.thing_name;
     topic += "/shadow/update";
 
+    // Client publish takes char* instead of Strings **shrug**
     char* topicArr = strcpy(new char[topic.length() + 1], topic.c_str());
 
     client.publish(topicArr, jsonBuffer);
