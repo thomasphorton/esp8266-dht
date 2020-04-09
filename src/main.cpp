@@ -1,4 +1,3 @@
-#include "secrets.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include "Fs.h"
@@ -10,12 +9,40 @@
 
 DHT dht;
 
-const char* ssid = SECRET_SSID;
-const char* password = SECRET_PASS;
-const char* AWS_endpoint = AWS_ENDPOINT;
-
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
+
+struct Config {
+  char wifi_ssid[64];
+  char wifi_password[64];
+  char aws_iot_endpoint[64];
+  char thing_name[64];
+};
+
+Config config;
+
+void loadConfiguration(Config &config) {
+  File config_file = SPIFFS.open("/config.json", "r");
+  if (!config_file) {
+    Serial.println("Failed to open config file");
+  }
+  else {
+    Serial.println("config file opened");
+  }
+
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, config_file);
+  if (error) {
+    Serial.println("Failed to read config file");
+  }
+
+  strlcpy(config.wifi_ssid, doc["wifi_ssid"], sizeof(config.wifi_ssid));
+  strlcpy(config.wifi_password, doc["wifi_password"], sizeof(config.wifi_password));
+  strlcpy(config.aws_iot_endpoint, doc["aws_iot_endpoint"], sizeof(config.aws_iot_endpoint));
+  strlcpy(config.thing_name, doc["thing_name"], sizeof(config.thing_name));
+
+  config_file.close();
+}
 
 void callback(char* topic, byte* payload, int length) {
   Serial.print("Message arrived [");
@@ -29,7 +56,7 @@ void callback(char* topic, byte* payload, int length) {
 }
 
 WiFiClientSecure espClient;
-PubSubClient client(AWS_endpoint, 8883, callback, espClient);
+PubSubClient client(config.aws_iot_endpoint, 8883, callback, espClient);
 
 void setup_wifi() {
   delay(10);
@@ -37,9 +64,9 @@ void setup_wifi() {
   espClient.setBufferSizes(512, 512);
   Serial.println();
   Serial.print("Connecting to ");
-  Serial.println(ssid);
+  Serial.println(config.wifi_ssid);
 
-  WiFi.begin(ssid, password);
+  WiFi.begin(config.wifi_ssid, config.wifi_password);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -59,11 +86,6 @@ void setup_wifi() {
   espClient.setX509Time(timeClient.getEpochTime());
 
   delay(200);
-
-  if (!SPIFFS.begin()) {
-    Serial.println("Failed to mount file system");
-    return;
-  }
 
   // Load certificate file
   File cert = SPIFFS.open("/cert.der", "r");
@@ -126,7 +148,7 @@ void reconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("humidity-temp-2")) {
+    if (client.connect(config.thing_name)) {
       Serial.println("connected");
     } else {
       Serial.print("failed, rc=");
@@ -147,7 +169,14 @@ void reconnect() {
 void setup() {
   Serial.begin(9600);
 
+  if (!SPIFFS.begin()) {
+    Serial.println("Failed to mount file system");
+    return;
+  }
+
   dht.setup(5);
+  loadConfiguration(config);
+
   setup_wifi();
   reconnect();
 }
@@ -188,9 +217,13 @@ void loop() {
     char jsonBuffer[512];
     serializeJson(message, jsonBuffer);
 
-    char topic[42] = "$aws/things/humidity-temp-2/shadow/update";
+    String topic = "$aws/things/";
+    topic += config.thing_name;
+    topic += "/shadow/update";
 
-    client.publish(topic, jsonBuffer);
+    char* topicArr = strcpy(new char[topic.length() + 1], topic.c_str());
+
+    client.publish(topicArr, jsonBuffer);
 
     char prettyJson[512];
     serializeJsonPretty(message, prettyJson);

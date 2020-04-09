@@ -1,5 +1,8 @@
 .pio
 .vscode
 
-data/
+data/ca.der
+data/cert.der
+data/config.json
+data/private.der
 src/secrets.h

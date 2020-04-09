@@ -1,0 +1,6 @@
+{
+    "wifi_ssid": "",
+    "wifi_password": "",
+    "aws_iot_endpoint": "",
+    "thing_name": "dht-1"
+}
